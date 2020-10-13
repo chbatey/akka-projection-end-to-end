@@ -13,8 +13,9 @@ create index if not exists "PROJECTION_NAME_INDEX" on "AKKA_PROJECTION_OFFSET_ST
 
 create table if not exists events (
     name varchar(256),
+    projection_id BIGINT,
     event varchar(256),
-    constraint pkey primary key (name, event)
+    constraint pkey primary key (name, projection_id, event)
 );
 
 

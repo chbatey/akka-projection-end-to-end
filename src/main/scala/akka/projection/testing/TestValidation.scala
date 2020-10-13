@@ -1,32 +1,33 @@
 package akka.projection.testing
 
-import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.Behavior
 import akka.actor.typed.scaladsl.Behaviors
-import akka.projection.testing.LoadGeneration.{Pass, Result}
 import javax.sql.DataSource
 
 import scala.concurrent.duration.FiniteDuration
 
 object TestValidation {
-  // FIXME blocking, dispatcher
-  // FIXME timeout
-  def apply(replyTo: ActorRef[Result], testName: String, expectedNrEvents: Long, timeout: FiniteDuration, source: DataSource): Behavior[String] = {
+  def apply(testName: String, nrProjections: Int, expectedNrEvents: Long, timeout: FiniteDuration, source: DataSource): Behavior[String] = {
     import scala.concurrent.duration._
     Behaviors.setup { ctx =>
       def validate(): Boolean = {
-        val connection = source.getConnection
-        try {
-          val resultSet = connection.createStatement().executeQuery(s"select count(*) from events where name = '$testName'")
-          if (resultSet.next()) {
-            val count = resultSet.getInt("count")
-            ctx.log.info("Expected {} got {}!", expectedNrEvents, count)
-            expectedNrEvents == count
-          } else {
-            throw new RuntimeException("Expected single row")
+        val results: Seq[Boolean] = (0 until nrProjections).map { projectionId =>
+          val connection = source.getConnection
+          try {
+            val resultSet = connection.createStatement().executeQuery(s"select count(*) from events where name = '$testName' and projection_id = $projectionId")
+            if (resultSet.next()) {
+              val count = resultSet.getInt("count")
+              ctx.log.info("Expected {} got {}!", expectedNrEvents, count)
+              expectedNrEvents == count
+            } else {
+              throw new RuntimeException("Expected single row")
+            }
+          } finally {
+            connection.close()
           }
-        } finally {
-          connection.close()
         }
+
+        results.forall(identity)
       }
 
       Behaviors.withTimers { timers =>
@@ -36,7 +37,6 @@ object TestValidation {
           case "test" =>
             if (validate()) {
               ctx.log.info("Validated. Stopping")
-              replyTo ! Pass()
               Behaviors.stopped
             } else {
               Behaviors.same

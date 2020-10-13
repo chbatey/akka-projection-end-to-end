@@ -11,8 +11,9 @@ object EventProcessorSettings {
 
   def apply(config: Config): EventProcessorSettings = {
     val parallelism: Int = config.getInt("parallelism")
-    EventProcessorSettings(parallelism)
+    val nrProjections: Int = config.getInt("nr-projections")
+    EventProcessorSettings(parallelism, nrProjections)
   }
 }
 
-final case class EventProcessorSettings(parallelism: Int)
+final case class EventProcessorSettings(parallelism: Int, nrProjections: Int)

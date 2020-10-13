@@ -34,5 +34,13 @@ This helps tests the "exactly once" in the event of failures.
 * Cassandra on port 9042
 * Postgres on port 5432 with user and password docker/docker. Not currently configurable see `Guardian.scala`
 
+## Failure scenarios
+
+### Projection restart
+
+A known edge case is that a projection is restarted and delayed events from before the offset are then missed.
+This should only happen in when multiple nodes are writing events as delayed event should still be written in offset 
+order.
+
 
 

@@ -20,8 +20,10 @@ object ConfigurablePersistentActor {
 
   trait Command
 
-  final case class PersistAndAck(totalEvents: Long, toPersist: String, replyTo: ActorRef[StatusReply[Done]], testName: String) extends Command
+  final case class PersistAndAck(totalEvents: Long, toPersist: String, replyTo: ActorRef[StatusReply[Done]], testName: String) extends Command with CborSerializable
+
   final case class Event(testName: String, payload: String, timeCreated: Long = System.currentTimeMillis()) extends CborSerializable
+
   private final case class InternalPersist(totalEvents: Long, eventNr: Long, testName: String, toPersist: String, replyTo: ActorRef[StatusReply[Done]]) extends Command
 
   final case class State(eventsProcessed: Long) extends CborSerializable
@@ -42,13 +44,20 @@ object ConfigurablePersistentActor {
               replyTo ! StatusReply.ack()
               Effect.none
             } else {
-              Effect.persist(Event(testName, payload = s"${toPersist}-${eventNr}")).thenRun {_ =>
+              Effect.persist(Event(testName, payload = s"${toPersist}-${eventNr}")).thenRun { _ =>
                 ctx.self ! InternalPersist(totalEvents, eventNr + 1, testName, toPersist, replyTo)
               }
             }
         },
-        (state, _) => state.copy(eventsProcessed = state.eventsProcessed + 1)).withTagger(event =>
-        Set("tag-" + math.abs(event.hashCode() % settings.parallelism)))
+        (state, _) => state.copy(eventsProcessed = state.eventsProcessed + 1)
+      ).withTagger(event =>
+        (0 until settings.nrProjections).map {projection =>
+          val tagIndex = math.abs(event.hashCode() % settings.parallelism)
+          tagFor(projection, tagIndex)
+        }.toSet
+      )
     }
 
+  def tagFor(projectionIndex: Int, tagIndex: Int): String =
+    s"projection-$projectionIndex-tag-${tagIndex}"
 }

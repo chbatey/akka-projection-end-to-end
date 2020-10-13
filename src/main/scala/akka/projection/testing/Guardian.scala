@@ -3,23 +3,24 @@ package akka.projection.testing
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 import akka.cluster.sharding.typed.scaladsl.ShardedDaemonProcess
-import akka.cluster.sharding.typed.{ClusterShardingSettings, ShardedDaemonProcessSettings, ShardingEnvelope}
+import akka.cluster.sharding.typed.{ClusterShardingSettings, ShardedDaemonProcessSettings}
 import akka.cluster.typed.Cluster
 import akka.persistence.cassandra.query.scaladsl.CassandraReadJournal
 import akka.persistence.query.Offset
 import akka.projection.eventsourced.EventEnvelope
-import akka.projection.eventsourced.scaladsl.EventSourcedProvider
 import akka.projection.jdbc.scaladsl.JdbcProjection
-import akka.projection.scaladsl.{GroupedProjection, SourceProvider}
+import akka.projection.scaladsl.SourceProvider
 import akka.projection.{ProjectionBehavior, ProjectionId}
 import com.zaxxer.hikari.{HikariConfig, HikariDataSource}
 
 object Guardian {
 
-  def createProjectionFor(index: Int,
-                          factory: HikariFactory
+  def createProjectionFor(
+                           projectionIndex: Int,
+                           tagIndex: Int,
+                           factory: HikariFactory
                          )(implicit system: ActorSystem[_]) = {
-    val tag = s"tag-$index"
+    val tag = ConfigurablePersistentActor.tagFor(projectionIndex, tagIndex)
 
     val sourceProvider: SourceProvider[Offset, EventEnvelope[ConfigurablePersistentActor.Event]] = FailingEventsByTagSourceProvider.eventsByTag[ConfigurablePersistentActor.Event](
       system = system,
@@ -34,10 +35,10 @@ object Guardian {
     //    )
 
     JdbcProjection.exactlyOnce(
-      projectionId = ProjectionId("test-projection-id", tag),
+      projectionId = ProjectionId(s"test-projection-id-${projectionIndex}", tag),
       sourceProvider,
       () => factory.newSession(),
-      () => new ProjectionHandler(tag, system)
+      () => new ProjectionHandler(tag, projectionIndex, system)
     )
   }
 
@@ -54,9 +55,11 @@ object Guardian {
       val dataSource = new HikariDataSource(config)
       val settings = EventProcessorSettings(system)
       val shardRegion = ConfigurablePersistentActor.init(settings, system)
-      val loadGeneration: ActorRef[LoadGeneration.RunTest] = context.spawn(LoadGeneration(shardRegion, dataSource), "load-generation")
+      val loadGeneration: ActorRef[LoadGeneration.RunTest] = context.spawn(LoadGeneration(settings, shardRegion, dataSource), "load-generation")
 
-      val server = new HttpServer(new TestRoutes(loadGeneration).route, 8080)
+      val httpPort = system.settings.config.getInt("test.http.port")
+
+      val server = new HttpServer(new TestRoutes(loadGeneration).route, httpPort)
       server.start()
 
       if (Cluster(system).selfMember.hasRole("read-model")) {
@@ -68,12 +71,16 @@ object Guardian {
         val shardedDaemonProcessSettings =
           ShardedDaemonProcessSettings(system).withShardingSettings(shardingSettings.withRole("read-model"))
 
-        ShardedDaemonProcess(system).init(
-          name = "test-projection",
-          settings.parallelism,
-          n => ProjectionBehavior(createProjectionFor(n, dbSessionFactory)),
-          shardedDaemonProcessSettings,
-          Some(ProjectionBehavior.Stop))
+        (0 until settings.nrProjections).foreach { projection =>
+          ShardedDaemonProcess(system).init(
+            name = s"test-projection-${projection}",
+            settings.parallelism,
+            n => ProjectionBehavior(createProjectionFor(projection, n, dbSessionFactory)),
+            shardedDaemonProcessSettings,
+            Some(ProjectionBehavior.Stop))
+        }
+
+
       }
 
 

@@ -20,7 +20,7 @@ import scala.util.{Failure, Success}
 
 object LoadGeneration {
 
-  case class RunTest(name: String, actors: Int, eventsPerActor: Int, reply: ActorRef[TestSummary], messagesPerSecond: Int, timeout: Long)
+  case class RunTest(name: String, actors: Int, eventsPerActor: Int, reply: ActorRef[TestSummary], numberOfConcurrentActors: Int, timeout: Long)
   case class TestSummary(name: String, expectedMessages: Long)
 
   def apply(settings: EventProcessorSettings, shardRegion: ActorRef[ShardingEnvelope[ConfigurablePersistentActor.Command]], source: DataSource): Behavior[RunTest] = Behaviors.setup { ctx =>
@@ -48,16 +48,17 @@ object LoadTest {
     implicit val scheduler: Scheduler = system.toClassic.scheduler
 
     Behaviors.receiveMessagePartial[Command] {
-      case Start(RunTest(name, actors, eventsPerActor, replyTo, rate, t)) =>
+      case Start(RunTest(name, actors, eventsPerActor, replyTo, numberOfConcurrentActors, t)) =>
         ctx.log.info("Starting load generation")
         val expected: Int = actors * eventsPerActor
+        val total = expected * settings.nrProjections
         replyTo ! TestSummary(name, expected * settings.nrProjections)
         val startTime = System.nanoTime()
 
-        // The operation is idempotent so retries will not affect the final even count
-        val testRun: Source[StatusReply[Done], NotUsed] = Source(1 to actors).mapAsync(1)(id => retry(() => shardRegion.ask[StatusReply[Done]] { replyTo =>
+        // The operation is idempotent so retries will not affect the final event count
+        val testRun: Source[StatusReply[Done], NotUsed] = Source(1 to actors).mapAsyncUnordered(numberOfConcurrentActors)(id => retry(() => shardRegion.ask[StatusReply[Done]] { replyTo =>
           ShardingEnvelope(s"${testName}-$id", ConfigurablePersistentActor.PersistAndAck(eventsPerActor, s"actor-$id-message", replyTo, testName))
-        }, 10, 1.second, 10.seconds, 0.1)).throttle(rate, 1.second) // now that the  actors are responsible for doing the eventsPerActor this is a rate of actor creations
+        }, 10, 1.second, 10.seconds, 0.1))
 
         ctx.pipeToSelf(testRun.run()) {
           case Success(_) => StartValidation()
@@ -77,7 +78,7 @@ object LoadTest {
           case (ctx, Terminated(_)) =>
             val finishTime = System.nanoTime()
             val totalTime = finishTime - startTime
-            ctx.log.info("Validation finished, terminating. Total time for {} events. {}. Rough rate: {}", expected, akka.util.PrettyDuration.format(totalTime.nanos), expected / totalTime.nanos.toSeconds)
+            ctx.log.info("Validation finished for test {}, terminating. Total time for {} events. {}. Rough rate: {}", testName, total, akka.util.PrettyDuration.format(totalTime.nanos), total/ totalTime.nanos.toSeconds)
             Behaviors.stopped
         }
     }

@@ -1,7 +1,7 @@
 <configuration>
     <appender name="STDOUT" target="System.out" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>[%date{ISO8601}] [%level] [%logger] [%X{akkaSource}] [%marker] [%thread] - %msg%n</pattern>
+            <pattern>[%date{ISO8601}] [%level] [%logger] [%X{akkaSource}] [%marker] [%thread] [%X{persistenceId}] - %msg  MDC: {%mdc}%n</pattern>
         </encoder>
     </appender>
 

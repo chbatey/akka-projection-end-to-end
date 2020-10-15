@@ -21,7 +21,7 @@ import scala.util.{Failure, Success}
 
 object TestRoutes {
 
-  case class RunTest(name: String, nrActors: Int, messagesPerActor: Int, rate: Int, timeout: Int)
+  case class RunTest(name: String, nrActors: Int, messagesPerActor: Int, concurrentActors: Int, timeout: Int)
 
   case class Response(testName: String, expectedMessages: Long)
 
@@ -67,7 +67,7 @@ class TestRoutes(loadGeneration: ActorRef[LoadGeneration.RunTest])(implicit val 
           _ <- Future.sequence(truncates)
           result <- {
             log.info("Finished cleanup. Starting load generation")
-            loadGeneration.ask(replyTo => LoadGeneration.RunTest(name, runTest.nrActors, runTest.messagesPerActor, replyTo, runTest.rate, runTest.timeout))
+            loadGeneration.ask(replyTo => LoadGeneration.RunTest(name, runTest.nrActors, runTest.messagesPerActor, replyTo, runTest.concurrentActors, runTest.timeout))
           }
         } yield result
 

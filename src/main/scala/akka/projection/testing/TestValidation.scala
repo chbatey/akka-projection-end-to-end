@@ -61,16 +61,16 @@ object TestValidation {
           case "test" =>
             validate() match {
               case Pass =>
-                ctx.log.info("Validated. Stopping")
+                ctx.log.info("TestPhase: Validated. Stopping")
                 Behaviors.stopped
               case Fail =>
                 Behaviors.same
               case NoChange =>
-                ctx.log.error("Results are not changing. Stopping")
+                ctx.log.error("TestPhase: Results are not changing. Stopping")
                 Behaviors.stopped
             }
           case "timeout" =>
-            ctx.log.error("Timout out")
+            ctx.log.error("TestPhase: Timout out")
             Behaviors.stopped
         }
       }

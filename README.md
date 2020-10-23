@@ -61,7 +61,9 @@ This can be changed with `test.projection-failure-every`
 ## Starting multiple nodes
 
 `sbt "run 2551"`
+
 `sbt "run 2552"`
+
 `sbt "run 2553"`
 
 Typically, multiple nodes are required to re-create issues as while one node is failing other nodes can progress the offset.

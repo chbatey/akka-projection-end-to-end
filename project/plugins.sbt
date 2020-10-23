@@ -1,1 +1,1 @@
-addSbtPlugin("com.lightbend.cinnamon" % "sbt-cinnamon" % "2.14.5")
+addSbtPlugin("com.lightbend.cinnamon" % "sbt-cinnamon" % "2.14.6")

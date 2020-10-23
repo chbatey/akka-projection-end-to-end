@@ -40,7 +40,7 @@ object ConfigurablePersistentActor {
             Effect.none
           case InternalPersist(totalEvents, eventNr, testName, toPersist, replyTo) =>
             if (state.eventsProcessed == totalEvents) {
-              ctx.log.info("Finished persisting", totalEvents)
+              ctx.log.info("Finished persisting. Replying to {}", totalEvents, replyTo)
               replyTo ! StatusReply.ack()
               Effect.none
             } else {
